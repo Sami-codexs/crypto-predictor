@@ -101,13 +101,13 @@ class CryptoDatabase:
                     rsi REAL,
                     macd_line REAL,
                     macd_signal REAL,
-                    macd_hist REAL,
+                    macd_histogram REAL,
                     bb_upper REAL,
                     bb_lower REAL,
                     bb_percent REAL,
                     price_change_1h REAL,
                     price_change_24h REAL,
-                    volatility_24h REAL,
+                    volatility REAL,
                     target INTEGER,
                     UNIQUE(coin_id, timestamp)
                 )
@@ -120,17 +120,17 @@ class CryptoDatabase:
             for _, row in valid.iterrows():
                 records.append((
                     coin_id, row['timestamp'], row['rsi'],
-                    row['macd_line'], row['macd_signal'], row['macd_hist'],
+                    row['macd_line'], row['macd_signal'], row['macd_histogram'],
                     row['bb_upper'], row['bb_lower'], row['bb_percent'],
                     row['price_change_1h'], row['price_change_24h'],
-                    row['volatility_24h'], row['target']
+                    row['volatility'], row['target']
                 ))
             
             cursor.executemany("""
                 INSERT OR IGNORE INTO indicators 
-                (coin_id, timestamp, rsi, macd_line, macd_signal, macd_hist,
+                (coin_id, timestamp, rsi, macd_line, macd_signal, macd_histogram,
                  bb_upper, bb_lower, bb_percent, price_change_1h, price_change_24h,
-                 volatility_24h, target)
+                 volatility, target)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, records)
             

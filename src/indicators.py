@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import logging
-from database import CryptoDatabase
+from src.database import CryptoDatabase
 
 # Get logger for this file
 logger = logging.getLogger(__name__)
@@ -239,4 +239,4 @@ class TechnicalIndicators:
             "macd_histogram": round(latest['macd_histogram'], 4),
             "bb_position": round(latest['bb_percent'], 4),
             "volatility_24h": round(latest['volatility'], 2) if not pd.isna(latest['volatility']) else None
-        }
+        }                                                                       

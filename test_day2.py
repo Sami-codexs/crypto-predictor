@@ -1,5 +1,5 @@
-from config import setup_logging
-from indicators import TechnicalIndicators
+from src.config import setup_logging
+from src.indicators import TechnicalIndicators
 
 setup_logging()
 
@@ -15,7 +15,7 @@ try:
     print(f"   Columns: {list(df.columns)}")
     
     print("\n2. Sample data (last 3 rows):")
-    cols = ['timestamp', 'price_usd', 'rsi', 'macd_hist', 'target']
+    cols = ['timestamp', 'price_usd', 'rsi', 'macd_histogram', 'target']
     print(df[cols].tail(3).to_string())
     
     print("\n3. Latest signals:")
