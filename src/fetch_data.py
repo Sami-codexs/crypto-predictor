@@ -1,7 +1,7 @@
 import requests
 import time
-from datetime import datetime
-from database import CryptoDatabase
+from src.database import CryptoDatabase
+from src.config import setup_logging
 import logging
 
 logger = logging.getLogger(__name__)
@@ -101,4 +101,4 @@ if __name__ == "__main__":
     recent = fetcher.db.get_recent_prices("bitcoin", hours=1)
     print(f"\nRecent data in DB:\n{recent.head()}")
     
-    print("\n✅ Day 1 Complete! Data pipeline working.")
+  
