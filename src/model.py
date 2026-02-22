@@ -7,6 +7,7 @@ import logging
 import json
 import os
 from datetime import datetime
+from tensorflow.keras.callbacks import EarlyStopping
 
 logger = logging.getLogger(__name__)
 
@@ -47,13 +48,26 @@ class CryptoLSTM:
         return model
     
     def train(self, X_train: np.ndarray, y_train: np.ndarray,
-              X_val: np.ndarray = None, y_val: np.ndarray = None,
-              epochs: int = 50, batch_size: int = 32) -> dict:
-        """Train the model."""
+          X_val: np.ndarray = None, y_val: np.ndarray = None,
+          epochs: int = 100, batch_size: int = 32,
+          use_early_stopping: bool = True) -> dict:
+        """
+        Train with early stopping to prevent overfitting.
+        """
         if self.model is None:
             raise ValueError("Model not built. Call build_model() first.")
         
-        logger.info(f"Training: {len(X_train)} samples, {epochs} epochs")
+        logger.info(f"Training: {len(X_train)} samples, up to {epochs} epochs")
+        
+        callbacks = []
+        if use_early_stopping and X_val is not None:
+            early_stop = EarlyStopping(
+                monitor='val_loss',
+                patience=10,  # Stop if no improvement for 10 epochs
+                restore_best_weights=True
+            )
+            callbacks.append(early_stop)
+            logger.info("Early stopping enabled (patience=10)")
         
         validation_data = (X_val, y_val) if X_val is not None else None
         
@@ -62,18 +76,20 @@ class CryptoLSTM:
             epochs=epochs,
             batch_size=batch_size,
             validation_data=validation_data,
+            callbacks=callbacks,
             verbose=1
         )
         
         final_acc = self.history.history['accuracy'][-1]
         final_val_acc = self.history.history.get('val_accuracy', [0])[-1]
+        epochs_done = len(self.history.history['loss'])
         
-        logger.info(f"Training complete: acc={final_acc:.3f}, val_acc={final_val_acc:.3f}")
+        logger.info(f"Training complete: {epochs_done} epochs, acc={final_acc:.3f}, val_acc={final_val_acc:.3f}")
         
         return {
             'final_accuracy': final_acc,
             'final_val_accuracy': final_val_acc,
-            'epochs_trained': len(self.history.history['loss'])
+            'epochs_trained': epochs_done
         }
     
     def predict(self, X: np.ndarray) -> np.ndarray:

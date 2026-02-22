@@ -12,6 +12,33 @@ class MLPreprocessor:
     Prepares time-series data for LSTM training.
     Critical: No lookahead bias, proper scaling, sequence creation.
     """
+    def create_overlapping_sequences(self, df: pd.DataFrame, target_col: str = 'target', 
+                                  stride: int = 1) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Create sequences with overlapping windows.
+        
+        Normal: [0-24], [24-48] = 2 sequences from 48 rows
+        Overlap stride=1: [0-24], [1-25], [2-26]... = 24 sequences from 48 rows
+        """
+        feature_cols = [col for col in df.columns 
+                    if col not in ['timestamp', target_col, 'coin_id']]
+        self.feature_columns = feature_cols
+        
+        data = df[feature_cols].values
+        targets = df[target_col].values
+        
+        X, y = [], []
+        
+        # Create overlapping windows with stride
+        for i in range(0, len(data) - self.sequence_length, stride):
+            X.append(data[i:(i + self.sequence_length)])
+            y.append(targets[i + self.sequence_length])
+        
+        X = np.array(X)
+        y = np.array(y)
+        
+        logger.info(f"Created {len(X)} overlapping sequences (stride={stride})")
+        return X, y
     
     def __init__(self, sequence_length: int = 24):
         self.sequence_length = sequence_length  # 24 hours of history
@@ -92,24 +119,24 @@ class MLPreprocessor:
         
         return X_train, X_test, y_train, y_test
     
-    def prepare_data(self, df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    def prepare_data(self, df: pd.DataFrame, use_overlap: bool = True) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """
-        Full pipeline: sequences → split → scale.
+        Full pipeline with optional overlapping sequences.
         """
-        # Drop rows with NaN (warmup period)
         df_clean = df.dropna()
         logger.info(f"Clean data: {len(df_clean)} rows")
         
-        # Create sequences
-        X, y = self.create_sequences(df_clean)
+        # Use overlapping sequences if data is scarce
+        if use_overlap and len(df_clean) < 100:
+            X, y = self.create_overlapping_sequences(df_clean, stride=2)
+            logger.info("Using overlapping sequences (data augmentation)")
+        else:
+            X, y = self.create_sequences(df_clean)
         
         if len(X) == 0:
             raise ValueError("Not enough data to create sequences")
         
-        # Split (before scaling to prevent leakage)
-        X_train, X_test, y_train, y_test = self.split_train_test(X, y)
-        
-        # Scale
+        X_train, X_test, y_train, y_test = self.split_train_test(X, y, test_size=0.2)
         X_train_scaled, X_test_scaled = self.scale_features(X_train, X_test)
         
         return X_train_scaled, X_test_scaled, y_train, y_test
