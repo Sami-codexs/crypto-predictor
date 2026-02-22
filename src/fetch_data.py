@@ -1,8 +1,12 @@
 import requests
 import logging
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
-from src.database import CryptoDatabase
-from src.validation import DataValidator
+try:
+    from src.database import CryptoDatabase
+    from src.validation import DataValidator
+except ImportError:
+    from database import CryptoDatabase
+    from validation import DataValidator
 
 logger = logging.getLogger(__name__)
 
@@ -28,8 +32,6 @@ class CoinGeckoFetcher:
     def _make_request(self, endpoint: str, params: dict) -> dict:
         """
         Make API request with exponential backoff retry.
-        - Try 3 times max
-        - Wait 4s, then 8s, then 16s between retries
         """
         logger.debug(f"API request to {endpoint}")
         response = self.session.get(endpoint, params=params, timeout=10)
@@ -63,14 +65,12 @@ class CoinGeckoFetcher:
     def store_prices(self, price_data: dict) -> dict:
         """
         Store prices with validation.
-        Returns summary of stored/invalid records.
         """
         results = {"stored": 0, "invalid": 0, "errors": []}
         
         for coin_id, data in price_data.items():
             price = data.get("usd")
             
-            # Validate
             is_valid, msg = self.validator.validate_price(price)
             
             if not is_valid:
@@ -79,7 +79,6 @@ class CoinGeckoFetcher:
                 results["errors"].append(f"{coin_id}: {msg}")
                 continue
             
-            # Store if valid
             success = self.db.insert_price(
                 coin_id=coin_id,
                 price=price,
@@ -124,3 +123,25 @@ class CoinGeckoFetcher:
                 "message": str(e),
                 "records_stored": 0
             }
+
+
+if __name__ == "__main__":
+    try:
+        from src.config import setup_logging
+    except ImportError:
+        from config import setup_logging
+    
+    setup_logging()
+    
+    print("🚀 Starting Data Fetcher")
+    print("=" * 50)
+    
+    fetcher = CoinGeckoFetcher()
+    result = fetcher.fetch_and_store(["bitcoin"])
+    
+    print(f"\nResult: {result}")
+    
+    recent = fetcher.db.get_recent_prices("bitcoin", hours=1)
+    print(f"\nRecent data in DB:\n{recent.head()}")
+    
+    print("\n✅ Data pipeline working.")
