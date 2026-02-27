@@ -7,6 +7,7 @@ import os
 import time
 from datetime import datetime
 from functools import lru_cache
+from src.backtester import Backtester
 
 from src.predictor import CryptoPredictor
 from src.model_manager import ModelManager
@@ -57,6 +58,18 @@ class PredictionRequest(BaseModel):
         if v not in allowed:
             raise ValueError(f"Coin must be one of: {allowed}")
         return v
+class PerformanceResponse(BaseModel):
+    model_name: str
+    accuracy: float
+    precision: float
+    recall: float
+    f1_score: float
+    total_trades: int
+    win_rate: float
+    total_return_pct: float
+    max_drawdown_pct: float
+    sharpe_ratio: float
+    last_updated: str
 
 class PredictionResponse(BaseModel):
     coin: str
@@ -199,6 +212,63 @@ async def history(coin: str = "bitcoin", hours: int = 24):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+@app.get("/performance", response_model=PerformanceResponse, tags=["Performance"])
+async def performance(coin: str = "bitcoin", days: int = 7):
+    """
+    Get model performance metrics from backtesting.
+    
+    - **coin**: bitcoin or ethereum
+    - **days**: Backtest period (1-30, default 7)
+    """
+    if not 1 <= days <= 30:
+        raise HTTPException(status_code=400, detail="Days must be 1-30")
+    
+    allowed = ['bitcoin', 'ethereum', 'btc', 'eth']
+    if coin.lower() not in allowed:
+        raise HTTPException(status_code=400, detail=f"Coin must be one of: {allowed}")
+    
+    if predictor is None:
+        raise HTTPException(status_code=503, detail="Model not loaded")
+    
+    try:
+        # Get historical data
+        hours = days * 24
+        df = predictor.indicators.engineer_features(coin, hours=hours)
+        
+        if len(df) < 48:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Insufficient data: need 48+ hours, have {len(df)}"
+            )
+        
+        # Run backtest
+        backtester = Backtester(initial_capital=10000.0)
+        metrics = backtester.run_backtest(df, predictor.model, threshold=0.53, fee_pct=0.001)
+        
+        # Get model info
+        manager = ModelManager()
+        models = manager.list_models()
+        model_name = models[0]['name'] if models else "unknown"
+        
+        return {
+            "model_name": model_name,
+            "accuracy": metrics.get('accuracy', 0),
+            "precision": metrics.get('precision', 0),
+            "recall": metrics.get('recall', 0),
+            "f1_score": metrics.get('f1_score', 0),
+            "total_trades": metrics.get('total_trades', 0),
+            "win_rate": metrics.get('win_rate', 0),
+            "total_return_pct": metrics.get('total_return_pct', 0),
+            "max_drawdown_pct": metrics.get('max_drawdown_pct', 0),
+            "sharpe_ratio": metrics.get('sharpe_ratio', 0),
+            "last_updated": datetime.now().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Performance calculation failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
