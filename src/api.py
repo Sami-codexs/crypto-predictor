@@ -6,14 +6,31 @@ import logging
 import os
 import time
 from datetime import datetime
-from functools import lru_cache
-from src.backtester import Backtester
+import numpy as np
 
+from src.backtester import Backtester
 from src.predictor import CryptoPredictor
 from src.model_manager import ModelManager
 from src.database import CryptoDatabase
 
 logger = logging.getLogger(__name__)
+
+# Helper function to convert NumPy types to Python native types
+def convert_numpy(obj):
+    """Convert NumPy types to Python native types for JSON serialization."""
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, (np.float32, np.float64)):
+        return float(obj)
+    elif isinstance(obj, (np.int32, np.int64)):
+        return int(obj)
+    elif isinstance(obj, dict):
+        return {k: convert_numpy(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_numpy(i) for i in obj]
+    elif isinstance(obj, tuple):
+        return tuple(convert_numpy(i) for i in obj)
+    return obj
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -58,6 +75,7 @@ class PredictionRequest(BaseModel):
         if v not in allowed:
             raise ValueError(f"Coin must be one of: {allowed}")
         return v
+
 class PerformanceResponse(BaseModel):
     model_name: str
     accuracy: float
@@ -70,6 +88,20 @@ class PerformanceResponse(BaseModel):
     max_drawdown_pct: float
     sharpe_ratio: float
     last_updated: str
+
+class BatchPredictionRequest(BaseModel):
+    coins: List[str] = Field(default=["bitcoin", "ethereum"], min_items=1, max_items=10)
+    confidence_threshold: float = Field(default=0.6, ge=0.0, le=1.0)
+
+class BatchPredictionResponse(BaseModel):
+    predictions: List[dict]
+    summary: dict
+
+class PredictionHistoryResponse(BaseModel):
+    total_predictions: int
+    correct_predictions: int
+    accuracy: float
+    recent_predictions: List[dict]
 
 class PredictionResponse(BaseModel):
     coin: str
@@ -115,17 +147,124 @@ async def rate_limit(request: Request, call_next):
     response = await call_next(request)
     return response
 
+@app.post("/predict/batch", response_model=BatchPredictionResponse, tags=["Prediction"])
+async def predict_batch(request: BatchPredictionRequest):
+    """
+    Get predictions for multiple coins at once.
+    """
+    if predictor is None:
+        raise HTTPException(status_code=503, detail="Model not loaded")
+    
+    # Validate all coins
+    allowed = ['bitcoin', 'ethereum', 'btc', 'eth']
+    invalid_coins = [c for c in request.coins if c.lower() not in allowed]
+    if invalid_coins:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Invalid coins: {invalid_coins}. Allowed: {allowed}"
+        )
+    
+    results = []
+    up_count = 0
+    down_count = 0
+    neutral_count = 0
+    
+    for coin in request.coins:
+        try:
+            result = predictor.predict_with_threshold(
+                coin_id=coin,
+                confidence_threshold=request.confidence_threshold
+            )
+            results.append(result)
+            
+            # Count predictions
+            pred = result.get('prediction', 'neutral')
+            if pred == 'up':
+                up_count += 1
+            elif pred == 'down':
+                down_count += 1
+            else:
+                neutral_count += 1
+                
+        except Exception as e:
+            results.append({
+                'coin': coin,
+                'error': str(e)
+            })
+    
+    # Convert all NumPy types before returning
+    response_data = {
+        "predictions": results,
+        "summary": {
+            "total": len(request.coins),
+            "up": up_count,
+            "down": down_count,
+            "neutral": neutral_count,
+            "threshold": request.confidence_threshold
+        }
+    }
+    
+    return convert_numpy(response_data)
+
+@app.get("/predictions/history", response_model=PredictionHistoryResponse, tags=["History"])
+async def predictions_history(coin: str = "bitcoin", hours: int = 24):
+    """
+    Get recent prediction history.
+    """
+    if not 1 <= hours <= 168:
+        raise HTTPException(status_code=400, detail="Hours must be 1-168")
+    
+    return {
+        "total_predictions": 0,
+        "correct_predictions": 0,
+        "accuracy": 0.0,
+        "recent_predictions": [],
+        "note": "Prediction history tracking to be implemented with database table"
+    }
+
+@app.get("/models/compare", tags=["Models"])
+async def compare_models():
+    """
+    Compare all available models by performance.
+    """
+    try:
+        manager = ModelManager()
+        models = manager.list_models()
+        
+        if not models:
+            return {"error": "No models found"}
+        
+        comparison = []
+        for model in models[:5]:
+            info = {
+                "name": model['name'],
+                "created": model.get('created', 'unknown'),
+                "accuracy": float(model.get('accuracy')) if model.get('accuracy') is not None else None
+            }
+            comparison.append(info)
+        
+        result = {
+            "total_models": len(models),
+            "models": comparison,
+            "best_model": models[0]['name'] if models else None
+        }
+        
+        return convert_numpy(result)
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # Custom exception handler
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Unhandled error: {exc}")
     return JSONResponse(
         status_code=500,
-        content=ErrorResponse(
-            error="Internal server error",
-            detail=str(exc),
-            timestamp=datetime.now().isoformat()
-        ).dict()
+        content=convert_numpy({
+            "error": "Internal server error",
+            "detail": str(exc),
+            "timestamp": datetime.now().isoformat()
+        })
     )
 
 # Endpoints
@@ -157,9 +296,6 @@ async def health():
 async def predict(request: PredictionRequest):
     """
     Predict next hour price direction.
-    
-    - **coin**: bitcoin or ethereum
-    - **confidence_threshold**: 0.0-1.0, default 0.6
     """
     if predictor is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
@@ -173,7 +309,7 @@ async def predict(request: PredictionRequest):
         if "error" in result:
             raise HTTPException(status_code=400, detail=result["error"])
         
-        return result
+        return convert_numpy(result)
         
     except HTTPException:
         raise
@@ -185,15 +321,10 @@ async def predict(request: PredictionRequest):
 async def history(coin: str = "bitcoin", hours: int = 24):
     """
     Get recent price history.
-    
-    - **coin**: bitcoin or ethereum
-    - **hours**: 1-168 (default 24)
     """
-    # Validate hours
     if not 1 <= hours <= 168:
         raise HTTPException(status_code=400, detail="Hours must be 1-168")
     
-    # Validate coin
     allowed = ['bitcoin', 'ethereum', 'btc', 'eth']
     if coin.lower() not in allowed:
         raise HTTPException(status_code=400, detail=f"Coin must be one of: {allowed}")
@@ -203,22 +334,21 @@ async def history(coin: str = "bitcoin", hours: int = 24):
     
     try:
         df = db.get_recent_prices(coin, hours=hours)
-        return {
+        result = {
             "coin": coin,
             "hours": hours,
             "records": len(df),
             "latest_price": float(df['price_usd'].iloc[0]) if len(df) > 0 else None,
-            "data": df.head(10).to_dict('records')  # Limit to 10 records
+            "data": df.head(10).to_dict('records')
         }
+        return convert_numpy(result)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
 @app.get("/performance", response_model=PerformanceResponse, tags=["Performance"])
 async def performance(coin: str = "bitcoin", days: int = 7):
     """
     Get model performance metrics from backtesting.
-    
-    - **coin**: bitcoin or ethereum
-    - **days**: Backtest period (1-30, default 7)
     """
     if not 1 <= days <= 30:
         raise HTTPException(status_code=400, detail="Days must be 1-30")
@@ -231,7 +361,6 @@ async def performance(coin: str = "bitcoin", days: int = 7):
         raise HTTPException(status_code=503, detail="Model not loaded")
     
     try:
-        # Get historical data
         hours = days * 24
         df = predictor.indicators.engineer_features(coin, hours=hours)
         
@@ -241,28 +370,28 @@ async def performance(coin: str = "bitcoin", days: int = 7):
                 detail=f"Insufficient data: need 48+ hours, have {len(df)}"
             )
         
-        # Run backtest
         backtester = Backtester(initial_capital=10000.0)
         metrics = backtester.run_backtest(df, predictor.model, threshold=0.53, fee_pct=0.001)
         
-        # Get model info
         manager = ModelManager()
         models = manager.list_models()
         model_name = models[0]['name'] if models else "unknown"
         
-        return {
+        result = {
             "model_name": model_name,
-            "accuracy": metrics.get('accuracy', 0),
-            "precision": metrics.get('precision', 0),
-            "recall": metrics.get('recall', 0),
-            "f1_score": metrics.get('f1_score', 0),
-            "total_trades": metrics.get('total_trades', 0),
-            "win_rate": metrics.get('win_rate', 0),
-            "total_return_pct": metrics.get('total_return_pct', 0),
-            "max_drawdown_pct": metrics.get('max_drawdown_pct', 0),
-            "sharpe_ratio": metrics.get('sharpe_ratio', 0),
+            "accuracy": float(metrics.get('accuracy', 0)),
+            "precision": float(metrics.get('precision', 0)),
+            "recall": float(metrics.get('recall', 0)),
+            "f1_score": float(metrics.get('f1_score', 0)),
+            "total_trades": int(metrics.get('total_trades', 0)),
+            "win_rate": float(metrics.get('win_rate', 0)),
+            "total_return_pct": float(metrics.get('total_return_pct', 0)),
+            "max_drawdown_pct": float(metrics.get('max_drawdown_pct', 0)),
+            "sharpe_ratio": float(metrics.get('sharpe_ratio', 0)),
             "last_updated": datetime.now().isoformat()
         }
+        
+        return convert_numpy(result)
         
     except HTTPException:
         raise

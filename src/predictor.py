@@ -4,7 +4,6 @@ from typing import Dict, Optional
 from src.indicators import TechnicalIndicators
 from src.preprocessing import MLPreprocessor
 from src.model import CryptoLSTM
-import tensorflow as tf
 
 logger = logging.getLogger(__name__)
 
@@ -42,17 +41,6 @@ class CryptoPredictor:
     def predict_next(self, coin_id: str = "bitcoin") -> Dict:
         """
         Predict next hour direction for a coin.
-        
-        Returns:
-            {
-                'coin': str,
-                'timestamp': str,
-                'current_price': float,
-                'prediction': 'up' or 'down',
-                'confidence': float (0-1),
-                'probability': float (raw model output),
-                'indicators': dict of current indicator values
-            }
         """
         logger.info(f"Predicting next hour for {coin_id}")
         
@@ -74,15 +62,12 @@ class CryptoPredictor:
             }
         
         # Step 3: Get the last 24 hours as a sequence
-        # We need to recreate the preprocessing steps without re-fitting
         latest_data = df.tail(24)
         
-        # Step 4: Prepare features (same as training)
+        # Step 4: Prepare features
         feature_cols = [col for col in df.columns 
                        if col not in ['timestamp', 'target', 'coin_id']]
         
-        # Scale using the preprocessor's scaler (must be fitted)
-        # For now, we'll use the raw indicators and note that scaling is needed
         sequence = latest_data[feature_cols].values
         
         # Reshape for model: (1, 24, 12)
@@ -91,6 +76,8 @@ class CryptoPredictor:
         # Step 5: Make prediction
         try:
             probability = self.model.predict(X)[0]
+            # Convert numpy to Python float
+            probability = float(probability)
         except Exception as e:
             logger.error(f"Prediction failed: {e}")
             return {
@@ -102,21 +89,25 @@ class CryptoPredictor:
         prediction = 'up' if probability > 0.5 else 'down'
         confidence = probability if prediction == 'up' else (1 - probability)
         
+        # Convert to Python floats
+        confidence = float(confidence)
+        
         # Get latest indicator values for context
         latest = latest_data.iloc[-1]
         
+        # Convert all numpy values to Python native types
         return {
             'coin': coin_id,
             'timestamp': str(latest['timestamp']),
-            'current_price': round(latest['price_usd'], 2),
+            'current_price': float(round(float(latest['price_usd']), 2)),
             'prediction': prediction,
-            'confidence': round(confidence, 4),
-            'probability': round(probability, 4),
+            'confidence': float(round(confidence, 4)),
+            'probability': float(round(probability, 4)),
             'indicators': {
-                'rsi': round(latest['rsi'], 2),
-                'macd_signal': 'bullish' if latest['macd_histogram'] > 0 else 'bearish',
-                'bb_position': round(latest['bb_percent'], 2),
-                'volatility': round(latest['volatility'], 2) if not np.isnan(latest['volatility']) else None
+                'rsi': float(round(float(latest['rsi']), 2)),
+                'macd_signal': 'bullish' if float(latest['macd_histogram']) > 0 else 'bearish',
+                'bb_position': float(round(float(latest['bb_percent']), 2)),
+                'volatility': float(round(float(latest['volatility']), 2)) if not np.isnan(latest['volatility']) else None
             }
         }
     
@@ -131,9 +122,11 @@ class CryptoPredictor:
         if 'error' in result:
             return result
         
-        if result['confidence'] < confidence_threshold:
+        # Ensure confidence is Python float for comparison
+        conf = float(result['confidence'])
+        if conf < confidence_threshold:
             result['prediction'] = 'neutral'
-            result['reason'] = f"Confidence {result['confidence']:.2f} below threshold {confidence_threshold}"
+            result['reason'] = f"Confidence {conf:.2f} below threshold {confidence_threshold}"
         
         return result
     
