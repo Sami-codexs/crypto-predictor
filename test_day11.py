@@ -12,7 +12,7 @@ print("=" * 50)
 
 # Load best model
 manager = ModelManager()
-model_path = manager.get_best_model('accuracy')
+model_path = "models/crypto_lstm_20260224_225513.keras" 
 if not model_path:
     print("No model found")
     exit()
@@ -24,14 +24,14 @@ model.load(model_path)
 # Get historical data
 print("\n2. Loading historical data...")
 indicators = TechnicalIndicators()
-df = indicators.engineer_features("bitcoin", hours=72)  # 3 days for test
+df = indicators.engineer_features("bitcoin", hours=168)  # 3 days for test
 
 print(f"   Data: {len(df)} rows")
 
 # Run backtest
-print("\n3. Running backtest (60% confidence threshold)...")
+print("\n3. Running backtest (51% confidence threshold)...")
 backtester = Backtester(initial_capital=10000.0)
-metrics = backtester.run_backtest(df, model, threshold=0.6, fee_pct=0.001)
+metrics = backtester.run_backtest(df, model, threshold=0.53, fee_pct=0.001)
 
 if 'error' in metrics:
     print(f"   Error: {metrics['error']}")
