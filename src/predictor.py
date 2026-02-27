@@ -15,24 +15,24 @@ class CryptoPredictor:
     Loads trained model and makes predictions on new data.
     """
     
-def __init__(self, model_path: Optional[str] = None):
-    self.indicators = TechnicalIndicators()
-    self.preprocessor = MLPreprocessor(sequence_length=24)
-    
-    # Use ModelManager to select best model if path not provided
-    if model_path is None:
-        from src.model_manager import ModelManager
-        manager = ModelManager()
-        model_path = manager.get_best_model('accuracy')
-        logger.info(f"Auto-selected best model: {model_path}")
-    
-    self.model = CryptoLSTM(sequence_length=24, n_features=12)
-    
-    if model_path:
-        self.model.load(model_path)
-        logger.info(f"Loaded model from {model_path}")
-    else:
-        logger.warning("No model loaded")
+    def __init__(self, model_path: Optional[str] = None):
+        self.indicators = TechnicalIndicators()
+        self.preprocessor = MLPreprocessor(sequence_length=24)
+        
+        # Use ModelManager to select best model if path not provided
+        if model_path is None:
+            from src.model_manager import ModelManager
+            manager = ModelManager()
+            model_path = manager.get_best_model('accuracy')
+            logger.info(f"Auto-selected best model: {model_path}")
+        
+        self.model = CryptoLSTM(sequence_length=24, n_features=12)
+        
+        if model_path:
+            self.model.load(model_path)
+            logger.info(f"Loaded model from {model_path}")
+        else:
+            logger.warning("No model loaded")
     
     def load_model(self, model_path: str):
         """Load a saved model."""
@@ -58,7 +58,7 @@ def __init__(self, model_path: Optional[str] = None):
         
         # Step 1: Get latest features
         try:
-            df = self.indicators.engineer_features(coin_id, hours=48)
+            df = self.indicators.engineer_features(coin_id, hours=168)
         except ValueError as e:
             logger.error(f"Not enough data for {coin_id}: {e}")
             return {
