@@ -9,3 +9,5 @@ tensorflow==2.15.0
 fastapi==0.109.0
 uvicorn==0.27.0
 pydantic==2.6.0
+streamlit==1.29.0
+plotly==5.18.0

@@ -1,0 +1,63 @@
+# Day 20: Docker Compose for Crypto Predictor
+# Orchestrates API + Data Collector + Scheduler
+
+version: '3.8'
+
+services:
+  # Main API Service
+  api:
+    build: .
+    container_name: crypto-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./logs:/app/logs
+    environment:
+      - DATABASE_PATH=/app/data/crypto.db
+      - MODELS_DIR=/app/models
+      - LOG_LEVEL=INFO
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Data Collection Service
+  collector:
+    build: .
+    container_name: crypto-collector
+    command: python collect_data.py
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      - DATABASE_PATH=/app/data/crypto.db
+    restart: unless-stopped
+    depends_on:
+      - api
+
+  # Scheduler Service
+  scheduler:
+    build: .
+    container_name: crypto-scheduler
+    command: python -c "from src.scheduler import CryptoScheduler; CryptoScheduler().start()"
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./logs:/app/logs
+    environment:
+      - DATABASE_PATH=/app/data/crypto.db
+      - MODELS_DIR=/app/models
+    restart: unless-stopped
+    depends_on:
+      - api
+
+# Persistent volumes
+volumes:
+  crypto-data:
+    driver: local
+  crypto-models:
+    driver: local
