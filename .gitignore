@@ -4,11 +4,15 @@ __pycache__/
 *$py.class
 *.so
 .Python
-env/
+
+# Virtual environments (CRITICAL!)
 venv/
+venv*/
+env/
+ENV/
 .venv/
-pip-log.txt
-pip-delete-this-directory.txt
+env.bak/
+venv.bak/
 
 # Secrets
 .env
