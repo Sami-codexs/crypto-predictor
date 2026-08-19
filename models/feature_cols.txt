@@ -1,0 +1,1 @@
+price_usd,volume_24h,rsi,macd_line,macd_signal,macd_histogram,bb_upper,bb_lower,bb_percent,price_change_1h,price_change_24h,volatility

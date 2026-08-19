@@ -154,15 +154,21 @@ class TimerContextManager:
 
 
 # Global monitor instance
-_monitor = None
+# Global monitor instance - created lazily
+_monitor_instance = None
 
 def get_monitor() -> ModelMonitor:
     """Get or create global monitor instance."""
-    global _monitor
-    if _monitor is None:
-        _monitor = ModelMonitor()
-    return _monitor
+    global _monitor_instance
+    if _monitor_instance is None:
+        _monitor_instance = ModelMonitor()
+    return _monitor_instance
 
+# For testing - reset global instance
+def _reset_monitor():
+    """Reset global monitor (for testing only)."""
+    global _monitor_instance
+    _monitor_instance = None
 
 # For FastAPI integration
 def setup_monitoring(app):

@@ -1,3 +1,4 @@
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
@@ -5,17 +6,13 @@ __pycache__/
 .Python
 env/
 venv/
-.env
-.venv
+.venv/
 pip-log.txt
 pip-delete-this-directory.txt
 
-# Data & Models (large files)
-data/*.db
-data/*.db-journal
-models/*.keras
-models/*.h5
-logs/*.log
+# Secrets
+.env
+.env.local
 
 # Testing
 .pytest_cache/
@@ -39,7 +36,52 @@ Thumbs.db
 .ipynb_checkpoints/
 *.ipynb
 
-# Keep folder structure but ignore contents
+# Logs
+logs/*.log
+
+# Data backups
+data/*.db.backup
+data/*.db-journal
+
+# Models - ignore all EXCEPT the ones we need
+models/*.keras
+models/*.h5
+models/*_metadata.json
+!models/lstm_model.h5
+!models/scaler.pkl
+!models/feature_cols.txt
+
+# Keep folder structure
 !data/.gitkeep
 !models/.gitkeep
 !logs/.gitkeep
+
+# Dev scripts
+fix_*.py
+test_*.py
+test_day*.py
+test_diag*.py
+test_env*.py
+test_html.py
+test_scheduler.py
+collect_*.py
+run_fetcher_*.py
+seed_demo_data.py
+init_drift.py
+retrain_model.py
+train.py
+write_engine*.py
+final_fix.py
+xyz.txt
+pd.Timestamp.now()
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+render.yaml
+
+# Misc
+Makefile
+pytest.ini
+CACHEDIR.TAG

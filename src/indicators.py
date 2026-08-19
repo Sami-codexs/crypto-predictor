@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import logging
-from src.database import CryptoDatabase
+from database import CryptoDatabase
 
 # Get logger for this file
 logger = logging.getLogger(__name__)

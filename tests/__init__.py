@@ -1,0 +1,3 @@
+"""
+CryptoMind test suite.
+"""

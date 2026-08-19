@@ -150,8 +150,8 @@ class CryptoLSTM:
         logger.info(f"Model loaded: {filepath}")
         
         meta_path = filepath.replace('.keras', '_metadata.json')
-        if os.path.exists(meta_path):
-            with open(meta_path, 'r') as f:
+        if os.path.exists(meta_path) and meta_path != filepath:
+            with open(meta_path, 'r', encoding='utf-8') as f:
                 metadata = json.load(f)
                 self.sequence_length = metadata.get('sequence_length', self.sequence_length)
                 self.n_features = metadata.get('n_features', self.n_features)
